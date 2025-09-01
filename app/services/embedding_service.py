@@ -79,7 +79,7 @@ class ChromaEmbeddingService:
         
         try:
             total_texts = len(texts)
-            batch_size = getattr(settings, 'EMBEDDING_BATCH_SIZE', 100)
+            batch_size = getattr(settings, 'EMBEDDING_BATCH_SIZE', 20)
             
             logger.info(f"Generating embeddings for {total_texts} texts using ChromaDB {self.embedding_function_name} function")
             
