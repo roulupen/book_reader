@@ -65,8 +65,8 @@ class VectorStore:
     def query_documents(self, book_id: str, query: str, n_results: int = 5, query_embedding: List[float] = None) -> List[Dict[str, Any]]:
         """Query documents for a specific book with optional custom query embedding"""
         try:
-            # Use custom query embedding if provided
-            if query_embedding:
+            # Use custom query embedding if provided (check for None and non-empty list)
+            if query_embedding is not None and len(query_embedding) > 0:
                 results = self.collection.query(
                     query_embeddings=[query_embedding],
                     n_results=n_results,
@@ -81,14 +81,21 @@ class VectorStore:
                 )
                 logger.info(f"Queried with text for book {book_id}")
             
-            # Format results
+            # Format results - safe checking for nested lists
             documents = []
-            if results["documents"] and results["documents"][0]:
+            if (results.get("documents") and 
+                len(results["documents"]) > 0 and 
+                results["documents"][0] is not None):
+                
                 for i, doc in enumerate(results["documents"][0]):
                     documents.append({
                         "content": doc,
-                        "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-                        "distance": results["distances"][0][i] if results["distances"] else 0.0
+                        "metadata": results["metadatas"][0][i] if (results.get("metadatas") and 
+                                                                   len(results["metadatas"]) > 0 and 
+                                                                   len(results["metadatas"][0]) > i) else {},
+                        "distance": results["distances"][0][i] if (results.get("distances") and 
+                                                                   len(results["distances"]) > 0 and 
+                                                                   len(results["distances"][0]) > i) else 0.0
                     })
             
             return documents
