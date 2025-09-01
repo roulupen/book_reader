@@ -45,12 +45,13 @@ class FastEmbeddingService:
                 logger.error(f"Failed to initialize fallback model: {str(fallback_error)}")
                 raise ValueError("Could not initialize any FastEmbed model")
     
-    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def generate_embeddings(self, texts: List[str], progress_callback=None) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts
+        Generate embeddings for multiple texts with optional progress callback
         
         Args:
             texts: List of text strings to embed
+            progress_callback: Optional callback function(current, total, message)
             
         Returns:
             List of embedding vectors (each vector is a list of floats)
@@ -62,25 +63,47 @@ class FastEmbeddingService:
             return []
         
         try:
-            logger.info(f"Generating embeddings for {len(texts)} texts using FastEmbed")
+            total_texts = len(texts)
+            logger.info(f"Generating embeddings for {total_texts} texts using FastEmbed")
             
-            # FastEmbed returns a generator of numpy arrays
-            embeddings_generator = self.embedding_model.embed(texts)
+            if progress_callback:
+                progress_callback(0, total_texts, "Starting embedding generation...")
             
-            # Convert to list of lists
+            # Process in batches for better progress reporting
+            batch_size = 50  # Process 50 texts at a time for progress updates
             embeddings = []
-            for embedding in embeddings_generator:
-                # Convert numpy array to list of floats
-                if isinstance(embedding, np.ndarray):
-                    embeddings.append(embedding.tolist())
-                else:
-                    embeddings.append(list(embedding))
+            
+            for i in range(0, total_texts, batch_size):
+                batch_texts = texts[i:i + batch_size]
+                
+                # Generate embeddings for this batch
+                batch_embeddings_generator = self.embedding_model.embed(batch_texts)
+                
+                batch_embeddings = []
+                for j, embedding in enumerate(batch_embeddings_generator):
+                    # Convert numpy array to list of floats
+                    if isinstance(embedding, np.ndarray):
+                        batch_embeddings.append(embedding.tolist())
+                    else:
+                        batch_embeddings.append(list(embedding))
+                    
+                    # Report progress for each embedding in batch
+                    current_total = i + j + 1
+                    if progress_callback:
+                        progress_callback(current_total, total_texts, f"Generated embedding {current_total}/{total_texts}")
+                
+                embeddings.extend(batch_embeddings)
+            
+            if progress_callback:
+                progress_callback(total_texts, total_texts, "Embedding generation completed!")
             
             logger.info(f"Generated {len(embeddings)} embeddings successfully")
             return embeddings
             
         except Exception as e:
             logger.error(f"Error generating embeddings with FastEmbed: {str(e)}")
+            if progress_callback:
+                progress_callback(0, len(texts), f"Error: {str(e)}")
             return []
     
     def generate_query_embedding(self, query: str) -> List[float]:
@@ -141,9 +164,21 @@ class GeminiEmbeddingService:
     def __init__(self, gemini_service):
         self.gemini_service = gemini_service
     
-    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings using Gemini AI"""
-        return self.gemini_service.generate_embeddings(texts)
+    def generate_embeddings(self, texts: List[str], progress_callback=None) -> List[List[float]]:
+        """Generate embeddings using Gemini AI with progress tracking"""
+        if progress_callback:
+            progress_callback(0, len(texts), "Starting Gemini embedding generation...")
+        
+        # Gemini processes all at once, so we simulate progress
+        embeddings = self.gemini_service.generate_embeddings(texts)
+        
+        if progress_callback:
+            if embeddings:
+                progress_callback(len(texts), len(texts), "Gemini embedding generation completed!")
+            else:
+                progress_callback(0, len(texts), "Gemini embedding generation failed")
+        
+        return embeddings
     
     def generate_query_embedding(self, query: str) -> List[float]:
         """Generate query embedding using Gemini AI"""

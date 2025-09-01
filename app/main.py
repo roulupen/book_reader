@@ -1,8 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import json
+import asyncio
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any
 from datetime import datetime
 import os
@@ -133,6 +137,180 @@ async def upload_book(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Error uploading book: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Store progress data for uploads
+upload_progress: Dict[str, Dict[str, Any]] = {}
+
+# Thread pool for background processing
+executor = ThreadPoolExecutor(max_workers=3)
+
+def process_book_background(book_id: str, temp_file_path: str, filename: str):
+    """Background task to process book upload"""
+    try:
+        upload_progress[book_id]["message"] = "Extracting text from file..."
+        logger.info(f"Background processing: Extracting text from {filename}")
+        text_content = file_processor.extract_text_from_file(temp_file_path)
+        
+        if not text_content.strip():
+            upload_progress[book_id] = {"status": "error", "message": "No text content found in file"}
+            return
+        
+        # Chunk the text
+        upload_progress[book_id]["message"] = "Creating semantic chunks..."
+        logger.info(f"Background processing: Creating chunks for {filename}")
+        chunks = file_processor.chunk_text(text_content)
+        if not chunks:
+            upload_progress[book_id] = {"status": "error", "message": "Failed to create text chunks"}
+            return
+        
+        # Prepare for embedding generation
+        texts = [chunk["content"] for chunk in chunks]
+        metadatas = [chunk["metadata"] for chunk in chunks]
+        
+        upload_progress[book_id]["total"] = len(texts)
+        upload_progress[book_id]["message"] = f"Generating embeddings for {len(texts)} chunks..."
+        
+        # Define progress callback
+        def progress_callback(current, total, message):
+            upload_progress[book_id].update({
+                "current": current,
+                "total": total,
+                "message": message,
+                "percentage": round((current / total) * 100, 1) if total > 0 else 0
+            })
+        
+        # Generate embeddings with progress tracking
+        logger.info(f"Background processing: Generating embeddings for {len(texts)} chunks using {embedding_service.get_model_info()['provider']}")
+        embeddings = embedding_service.generate_embeddings(texts, progress_callback)
+        
+        # Add to vector store
+        upload_progress[book_id]["message"] = "Saving to vector database..."
+        success = vector_store.add_documents(book_id, texts, metadatas, embeddings)
+        if not success:
+            upload_progress[book_id] = {"status": "error", "message": "Failed to index book"}
+            return
+        
+        # Store metadata persistently
+        metadata_store.add_book(
+            book_id=book_id,
+            filename=filename,
+            chunk_count=len(chunks)
+        )
+        
+        # Mark as completed
+        upload_progress[book_id] = {
+            "status": "completed",
+            "current": len(chunks),
+            "total": len(chunks),
+            "message": "Book successfully indexed!",
+            "percentage": 100,
+            "book_id": book_id,
+            "filename": filename,
+            "chunk_count": len(chunks)
+        }
+        
+        logger.info(f"Background processing completed for book {book_id}")
+        
+    except Exception as e:
+        logger.error(f"Background processing error for book {book_id}: {str(e)}")
+        upload_progress[book_id] = {"status": "error", "message": f"Processing failed: {str(e)}"}
+    
+    finally:
+        # Always delete the temporary file after processing
+        try:
+            file_processor.delete_temp_file(temp_file_path)
+            logger.info(f"Deleted temporary file after background processing: {temp_file_path}")
+        except Exception as e:
+            logger.error(f"Error deleting temp file: {str(e)}")
+
+@app.post("/upload-with-progress")
+async def upload_book_with_progress(file: UploadFile = File(...)):
+    """Upload and index a book with background processing and progress tracking"""
+    try:
+        # Validate file
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+        
+        # Check file size
+        content = await file.read()
+        if len(content) > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413, 
+                detail=f"File too large. Maximum size is {settings.MAX_FILE_SIZE_MB}MB"
+            )
+        
+        # Save file and initialize progress tracking
+        book_id, temp_file_path = file_processor.save_uploaded_file(content, file.filename)
+        
+        upload_progress[book_id] = {
+            "status": "processing",
+            "current": 0,
+            "total": 0,
+            "message": "File uploaded successfully, starting processing...",
+            "filename": file.filename,
+            "percentage": 0
+        }
+        
+        # Start background processing
+        executor.submit(process_book_background, book_id, temp_file_path, file.filename)
+        
+        logger.info(f"Started background processing for book {book_id}: {file.filename}")
+        
+        # Return immediately with book_id for progress tracking
+        return {
+            "book_id": book_id, 
+            "status": "processing", 
+            "message": "Upload started successfully. Processing in background...",
+            "filename": file.filename
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start upload: {str(e)}")
+
+@app.get("/upload-progress/{book_id}")
+async def get_upload_progress(book_id: str):
+    """Get upload progress for a specific book"""
+    if book_id not in upload_progress:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    
+    progress = upload_progress[book_id]
+    return progress
+
+@app.get("/upload-progress-stream/{book_id}")
+async def get_upload_progress_stream(book_id: str):
+    """Stream upload progress using Server-Sent Events"""
+    
+    async def event_stream():
+        while True:
+            if book_id not in upload_progress:
+                yield f"data: {json.dumps({'error': 'Upload not found'})}\n\n"
+                break
+            
+            progress = upload_progress[book_id]
+            yield f"data: {json.dumps(progress)}\n\n"
+            
+            # Stop streaming if completed or errored
+            if progress.get("status") in ["completed", "error"]:
+                # Clean up after a delay
+                await asyncio.sleep(2)
+                if book_id in upload_progress:
+                    del upload_progress[book_id]
+                break
+            
+            await asyncio.sleep(0.5)  # Update every 500ms
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        }
+    )
 
 @app.delete("/books/{book_id}", response_model=BookDeleteResponse)
 async def delete_book(book_id: str):
