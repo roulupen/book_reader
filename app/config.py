@@ -31,6 +31,7 @@ class Settings:
     DATA_FOLDER: str = os.getenv("DATA_FOLDER", "./data")
     UPLOAD_FOLDER: str = os.getenv("UPLOAD_FOLDER", "./uploads")
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "52428800"))  # 50MB
+    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "50"))  # 50MB
     ALLOWED_EXTENSIONS: set = set(os.getenv("ALLOWED_EXTENSIONS", ".pdf,.txt,.docx").split(","))
     
     # Text Processing Configuration
