@@ -38,6 +38,13 @@ class Settings:
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
     
+    # Embedding Configuration
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "fastembed")  # fastembed, gemini, or sentence_transformers
+    FASTEMBED_MODEL: str = os.getenv("FASTEMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")  # Fast model
+    GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "models/text-embedding-004")
+    SENTENCE_TRANSFORMERS_MODEL: str = os.getenv("SENTENCE_TRANSFORMERS_MODEL", "all-MiniLM-L6-v2")
+    EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))  # Larger batches for speed
+    
     # API Configuration
     API_TITLE: str = os.getenv("API_TITLE", "Book Reader RAG Application")
     API_DESCRIPTION: str = os.getenv("API_DESCRIPTION", "A RAG application for querying books using AI")

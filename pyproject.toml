@@ -20,6 +20,7 @@ dependencies = [
     "markdown>=3.5.0",
     "langchain-community>=0.0.10",
     "fastembed>=0.2.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [project.optional-dependencies]

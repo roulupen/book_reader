@@ -1,10 +1,11 @@
 """
-FastEmbed-based embedding service for fast, local embeddings
+Configurable embedding service supporting multiple providers for optimal speed
 """
 import logging
 from typing import List, Optional, Dict, Any
 from fastembed import TextEmbedding
 import numpy as np
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -201,30 +202,185 @@ class GeminiEmbeddingService:
         except Exception:
             return False
 
+class SentenceTransformersEmbeddingService:
+    """Ultra-fast embedding service using sentence-transformers directly"""
+    
+    def __init__(self, model_name: str = None):
+        """
+        Initialize SentenceTransformers embedding service
+        
+        Args:
+            model_name: Model to use. If None, uses config setting.
+                Fast options:
+                - "all-MiniLM-L6-v2" (fastest, 384 dimensions)
+                - "all-MiniLM-L12-v2" (good balance)
+                - "all-mpnet-base-v2" (best quality, slower)
+        """
+        try:
+            from sentence_transformers import SentenceTransformer
+            self.SentenceTransformer = SentenceTransformer
+        except ImportError:
+            raise ImportError("sentence-transformers not installed. Run: pip install sentence-transformers")
+        
+        self.model_name = model_name or settings.SENTENCE_TRANSFORMERS_MODEL
+        self.model = None
+        self._initialize_model()
+    
+    def _initialize_model(self):
+        """Initialize the SentenceTransformers model"""
+        try:
+            logger.info(f"Initializing SentenceTransformers model: {self.model_name}")
+            self.model = self.SentenceTransformer(self.model_name)
+            logger.info(f"Successfully initialized SentenceTransformers model: {self.model_name}")
+        except Exception as e:
+            logger.error(f"Failed to initialize SentenceTransformers model {self.model_name}: {str(e)}")
+            # Fallback to fastest model
+            try:
+                fallback_model = "all-MiniLM-L6-v2"
+                logger.info(f"Trying fallback model: {fallback_model}")
+                self.model = self.SentenceTransformer(fallback_model)
+                self.model_name = fallback_model
+                logger.info(f"Successfully initialized fallback model: {fallback_model}")
+            except Exception as fallback_error:
+                logger.error(f"Failed to initialize fallback model: {str(fallback_error)}")
+                raise ValueError("Could not initialize any SentenceTransformers model")
+    
+    def generate_embeddings(self, texts: List[str], progress_callback=None) -> List[List[float]]:
+        """
+        Generate embeddings using SentenceTransformers (very fast)
+        
+        Args:
+            texts: List of text strings to embed
+            progress_callback: Optional callback function(current, total, message)
+            
+        Returns:
+            List of embedding vectors
+        """
+        if not self.model:
+            raise ValueError("SentenceTransformers model not initialized")
+        
+        if not texts:
+            return []
+        
+        try:
+            total_texts = len(texts)
+            batch_size = settings.EMBEDDING_BATCH_SIZE
+            
+            logger.info(f"Generating embeddings for {total_texts} texts using SentenceTransformers (batch_size={batch_size})")
+            
+            if progress_callback:
+                progress_callback(0, total_texts, "Starting SentenceTransformers embedding generation...")
+            
+            embeddings = []
+            
+            # Process in batches for progress reporting and memory efficiency
+            for i in range(0, total_texts, batch_size):
+                batch_texts = texts[i:i + batch_size]
+                current_batch_end = min(i + batch_size, total_texts)
+                
+                # Generate embeddings for this batch (very fast)
+                batch_embeddings = self.model.encode(batch_texts, convert_to_numpy=True, show_progress_bar=False)
+                
+                # Convert to list of lists
+                for embedding in batch_embeddings:
+                    embeddings.append(embedding.tolist())
+                
+                # Report progress
+                if progress_callback:
+                    progress_callback(
+                        current_batch_end, 
+                        total_texts, 
+                        f"Generated embeddings {current_batch_end}/{total_texts} (batch {i//batch_size + 1})"
+                    )
+            
+            if progress_callback:
+                progress_callback(total_texts, total_texts, "SentenceTransformers embedding generation completed!")
+            
+            logger.info(f"Generated {len(embeddings)} embeddings successfully with SentenceTransformers")
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"Error generating embeddings with SentenceTransformers: {str(e)}")
+            if progress_callback:
+                progress_callback(0, len(texts), f"Error: {str(e)}")
+            return []
+    
+    def generate_query_embedding(self, query: str) -> List[float]:
+        """Generate embedding for a single query"""
+        if not query.strip():
+            return []
+        
+        try:
+            embeddings = self.generate_embeddings([query])
+            if embeddings:
+                return embeddings[0]
+            return []
+        except Exception as e:
+            logger.error(f"Error generating query embedding: {str(e)}")
+            return []
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about the current embedding model"""
+        return {
+            "model_name": self.model_name,
+            "provider": "SentenceTransformers",
+            "local": True,
+            "fast": True,
+            "dimension": self._get_embedding_dimension()
+        }
+    
+    def _get_embedding_dimension(self) -> Optional[int]:
+        """Get the dimension of embeddings from this model"""
+        try:
+            test_embedding = self.generate_query_embedding("test")
+            return len(test_embedding) if test_embedding else None
+        except Exception:
+            return None
+    
+    def test_connection(self) -> bool:
+        """Test if the embedding service is working"""
+        try:
+            test_embedding = self.generate_query_embedding("test connection")
+            return len(test_embedding) > 0
+        except Exception as e:
+            logger.error(f"SentenceTransformers test connection failed: {str(e)}")
+            return False
+
 # Factory function to create the best available embedding service
 def create_embedding_service(prefer_local: bool = True, gemini_service=None) -> Any:
     """
-    Create the best available embedding service
+    Create the best available embedding service based on configuration
     
     Args:
-        prefer_local: If True, prefer FastEmbed over Gemini
+        prefer_local: If True, prefer local embedding services
         gemini_service: Gemini service instance for fallback
         
     Returns:
         Embedding service instance
     """
-    if prefer_local:
+    provider = settings.EMBEDDING_PROVIDER.lower()
+    
+    # Try the configured provider first
+    if provider == "sentence_transformers":
         try:
-            # Try FastEmbed first (faster)
-            service = FastEmbeddingService()
+            service = SentenceTransformersEmbeddingService()
             if service.test_connection():
-                logger.info("Using FastEmbed for embeddings (fast, local)")
+                logger.info(f"Using SentenceTransformers for embeddings: {service.model_name} (ultra-fast, local)")
+                return service
+        except Exception as e:
+            logger.warning(f"SentenceTransformers initialization failed: {str(e)}")
+    
+    elif provider == "fastembed":
+        try:
+            # Use the configured FastEmbed model
+            service = FastEmbeddingService(settings.FASTEMBED_MODEL)
+            if service.test_connection():
+                logger.info(f"Using FastEmbed for embeddings: {service.model_name} (fast, local)")
                 return service
         except Exception as e:
             logger.warning(f"FastEmbed initialization failed: {str(e)}")
     
-    # Fallback to Gemini if available
-    if gemini_service:
+    elif provider == "gemini" and gemini_service:
         try:
             gemini_embedding_service = GeminiEmbeddingService(gemini_service)
             if gemini_embedding_service.test_connection():
@@ -233,11 +389,23 @@ def create_embedding_service(prefer_local: bool = True, gemini_service=None) -> 
         except Exception as e:
             logger.warning(f"Gemini embedding service failed: {str(e)}")
     
-    # If we get here, try FastEmbed again as last resort
-    try:
-        service = FastEmbeddingService()
-        logger.info("Using FastEmbed as last resort")
-        return service
-    except Exception as e:
-        logger.error(f"All embedding services failed: {str(e)}")
-        raise ValueError("No embedding service available")
+    # Fallback priority: SentenceTransformers (fastest) -> FastEmbed -> Gemini
+    fallback_services = [
+        ("SentenceTransformers", lambda: SentenceTransformersEmbeddingService()),
+        ("FastEmbed", lambda: FastEmbeddingService("sentence-transformers/all-MiniLM-L6-v2")),  # Fastest FastEmbed model
+    ]
+    
+    if gemini_service:
+        fallback_services.append(("Gemini", lambda: GeminiEmbeddingService(gemini_service)))
+    
+    for service_name, service_creator in fallback_services:
+        try:
+            service = service_creator()
+            if service.test_connection():
+                logger.info(f"Using {service_name} as fallback embedding service")
+                return service
+        except Exception as e:
+            logger.warning(f"{service_name} fallback failed: {str(e)}")
+    
+    logger.error("All embedding services failed")
+    raise ValueError("No embedding service available")
