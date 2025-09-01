@@ -1,0 +1,48 @@
+[project]
+name = "book-reader-rag"
+version = "1.0.0"
+description = "A RAG application for querying books using AI"
+authors = [
+    {name = "Book Reader", email = "admin@bookreader.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "python-multipart>=0.0.6",
+    "chromadb>=0.4.18",
+    "google-generativeai>=0.3.2",
+    "PyPDF2>=3.0.1",
+    "python-docx>=1.1.0",
+    "aiofiles>=23.2.0",
+    "jinja2>=3.1.2",
+    "markdown>=3.5.0",
+    "langchain-community>=0.0.10",
+    "fastembed>=0.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

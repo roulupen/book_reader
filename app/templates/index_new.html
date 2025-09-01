@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Reader RAG Application</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            margin-bottom: 30px;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background-color: #f8f9ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background-color: #f0f2ff;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Q&A Interface Styles */
+        .qa-interface {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        .qa-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .qa-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .book-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .book-selector label {
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .book-selector select {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            min-width: 200px;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .btn-small:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .chat-container {
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafbfc;
+        }
+
+        .welcome-message {
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .user-message, .ai-message {
+            display: flex;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .ai-message {
+            justify-content: flex-start;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            margin: 0 10px;
+            flex-shrink: 0;
+        }
+
+        .user-message .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .ai-message .message-avatar {
+            background: #f0f0f0;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 18px;
+            position: relative;
+        }
+
+        .user-message .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .ai-message .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e1e5e9;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .message-content p {
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .message-content p:not(:last-child) {
+            margin-bottom: 10px;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e1e5e9;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-group textarea {
+            flex: 1;
+            resize: none;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            padding: 12px 15px;
+            font-family: inherit;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group textarea:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        .btn-send {
+            border-radius: 12px;
+            padding: 12px 20px;
+            white-space: nowrap;
+            min-width: 80px;
+        }
+
+        /* Books Management Styles */
+        .books-management {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .books-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .book-card {
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .book-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .book-card.selected {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .book-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .book-card p {
+            color: #666;
+            font-size: 0.9rem;
+            margin: 5px 0;
+        }
+
+        .book-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn-chat {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: transform 0.2s ease;
+        }
+
+        .btn-chat:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-delete {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .qa-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .book-selector {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .message-content {
+                max-width: 85%;
+            }
+            
+            .books-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Book Reader RAG</h1>
+            <p>Upload books, ask questions, get AI-powered answers</p>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="card">
+            <h2>📤 Upload Book</h2>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <p>Drag & drop your book here or click to select</p>
+                <p style="font-size: 0.9rem; color: #666; margin-top: 10px;">
+                    Supported formats: PDF, DOCX, TXT (Max: 50MB)
+                </p>
+            </div>
+            <input type="file" id="fileInput" accept=".pdf,.docx,.txt">
+            <button class="btn" id="uploadBtn" disabled>Upload Book</button>
+            
+            <div class="loading" id="uploadLoading">
+                <div class="spinner"></div>
+                <p>Processing your book...</p>
+            </div>
+        </div>
+
+        <!-- Q&A Interface -->
+        <div class="qa-interface" id="qaInterface" style="display: none;">
+            <div class="qa-header">
+                <h2>💬 Chat with Your Book</h2>
+                <div class="book-selector">
+                    <label for="bookSelect">📚 Selected Book:</label>
+                    <select id="bookSelect">
+                        <option value="">Select a book to start chatting</option>
+                    </select>
+                    <button class="btn btn-small" id="changeBookBtn">Change Book</button>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <div class="ai-message">
+                            <div class="message-avatar">🤖</div>
+                            <div class="message-content">
+                                <p>Hello! I'm ready to answer questions about your book. What would you like to know?</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-area">
+                    <div class="input-group">
+                        <textarea id="questionInput" rows="2" placeholder="Ask me anything about the book..."></textarea>
+                        <button class="btn btn-send" id="askBtn" disabled>
+                            <span id="sendText">Send</span>
+                            <span id="sendSpinner" style="display: none;">⏳</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Books Management -->
+        <div class="books-management" id="booksManagement">
+            <h2>📖 Your Books</h2>
+            <div class="books-grid" id="booksList">
+                <p style="color: #666; text-align: center; padding: 40px;">No books uploaded yet</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let books = [];
+        let currentBookId = null;
+
+        // DOM Elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadLoading = document.getElementById('uploadLoading');
+        const bookSelect = document.getElementById('bookSelect');
+        const questionInput = document.getElementById('questionInput');
+        const askBtn = document.getElementById('askBtn');
+        const sendText = document.getElementById('sendText');
+        const sendSpinner = document.getElementById('sendSpinner');
+        const booksList = document.getElementById('booksList');
+        const qaInterface = document.getElementById('qaInterface');
+        const booksManagement = document.getElementById('booksManagement');
+        const chatMessagesContainer = document.getElementById('chatMessages');
+        const changeBookBtn = document.getElementById('changeBookBtn');
+
+        // Initialize
+        loadBooks();
+        setupEventListeners();
+
+        function setupEventListeners() {
+            // File upload
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('dragleave', handleDragLeave);
+            uploadArea.addEventListener('drop', handleDrop);
+            fileInput.addEventListener('change', handleFileSelect);
+            uploadBtn.addEventListener('click', uploadBook);
+
+            // Chat functionality
+            bookSelect.addEventListener('change', handleBookSelect);
+            questionInput.addEventListener('input', updateSendButton);
+            questionInput.addEventListener('keypress', handleEnterKey);
+            askBtn.addEventListener('click', sendMessage);
+            changeBookBtn.addEventListener('click', showBooksManagement);
+        }
+
+        function handleEnterKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!askBtn.disabled) {
+                    sendMessage();
+                }
+            }
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect({ target: { files: files } });
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                uploadArea.innerHTML = `
+                    <div class="upload-icon">📄</div>
+                    <p><strong>${file.name}</strong></p>
+                    <p style="font-size: 0.9rem; color: #666;">
+                        Size: ${(file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                `;
+                uploadBtn.disabled = false;
+            }
+        }
+
+        async function uploadBook() {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            uploadBtn.disabled = true;
+            uploadLoading.classList.add('show');
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert('Book uploaded and indexed successfully! 🎉', 'success');
+                    resetUploadArea();
+                    await loadBooks();
+                } else {
+                    showAlert(result.detail || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                showAlert('Network error during upload', 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadLoading.classList.remove('show');
+            }
+        }
+
+        function resetUploadArea() {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadArea.innerHTML = `
+                <div class="upload-icon">📁</div>
+                <p>Drag & drop your book here or click to select</p>
+                <p style="font-size: 0.9rem; color: #666; margin-top: 10px;">
+                    Supported formats: PDF, DOCX, TXT (Max: 50MB)
+                </p>
+            `;
+            uploadBtn.disabled = true;
+        }
+
+        async function loadBooks() {
+            try {
+                const response = await fetch('/books');
+                books = await response.json();
+                
+                updateBooksList();
+                updateBookSelect();
+            } catch (error) {
+                console.error('Error loading books:', error);
+            }
+        }
+
+        function updateBooksList() {
+            if (books.length === 0) {
+                booksList.innerHTML = '<p style="color: #666; text-align: center; padding: 40px;">No books uploaded yet. Upload a book to start chatting! 📚</p>';
+                return;
+            }
+
+            booksList.innerHTML = books.map(book => `
+                <div class="book-card ${currentBookId === book.book_id ? 'selected' : ''}" data-book-id="${book.book_id}">
+                    <h4>📖 ${book.filename}</h4>
+                    <p>📅 Uploaded: ${new Date(book.upload_date).toLocaleDateString()}</p>
+                    <p>📄 ${book.chunk_count} chunks | 📊 ${book.status}</p>
+                    <div class="book-actions">
+                        <button class="btn-chat" onclick="startChatWithBook('${book.book_id}')">
+                            💬 Start Chat
+                        </button>
+                        <button class="btn-delete" onclick="deleteBook('${book.book_id}')">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateBookSelect() {
+            bookSelect.innerHTML = '<option value="">Select a book to start chatting</option>';
+            books.forEach(book => {
+                const option = document.createElement('option');
+                option.value = book.book_id;
+                option.textContent = `📖 ${book.filename}`;
+                bookSelect.appendChild(option);
+            });
+        }
+
+        function handleBookSelect() {
+            const bookId = bookSelect.value;
+            if (bookId) {
+                startChatWithBook(bookId);
+            }
+        }
+
+        function startChatWithBook(bookId) {
+            currentBookId = bookId;
+            const book = books.find(b => b.book_id === bookId);
+            
+            if (!book) return;
+
+            // Update UI
+            bookSelect.value = bookId;
+            qaInterface.style.display = 'block';
+            booksManagement.style.display = 'none';
+            
+            // Clear chat and show welcome message
+            chatMessagesContainer.innerHTML = `
+                <div class="welcome-message">
+                    <div class="ai-message">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <p>Hello! I'm ready to answer questions about "<strong>${book.filename}</strong>". What would you like to know?</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            updateSendButton();
+            questionInput.focus();
+        }
+
+        function showBooksManagement() {
+            qaInterface.style.display = 'none';
+            booksManagement.style.display = 'block';
+            currentBookId = null;
+            updateBooksList();
+        }
+
+        function updateSendButton() {
+            const hasQuestion = questionInput.value.trim().length > 0;
+            const hasBook = currentBookId !== null;
+            askBtn.disabled = !hasQuestion || !hasBook;
+        }
+
+        async function sendMessage() {
+            const question = questionInput.value.trim();
+            if (!question || !currentBookId) return;
+
+            // Add user message to chat
+            addMessageToChat('user', question);
+            
+            // Clear input and disable send button
+            questionInput.value = '';
+            updateSendButton();
+            
+            // Show loading state
+            askBtn.disabled = true;
+            sendText.style.display = 'none';
+            sendSpinner.style.display = 'inline';
+
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        book_id: currentBookId,
+                        question: question
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    addMessageToChat('ai', result.answer);
+                } else {
+                    addMessageToChat('ai', `Sorry, I encountered an error: ${result.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                addMessageToChat('ai', 'Sorry, I encountered a network error. Please try again.');
+            } finally {
+                // Reset send button
+                askBtn.disabled = false;
+                sendText.style.display = 'inline';
+                sendSpinner.style.display = 'none';
+                updateSendButton();
+                questionInput.focus();
+            }
+        }
+
+        function addMessageToChat(sender, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `${sender}-message`;
+            
+            const avatar = sender === 'user' ? '👤' : '🤖';
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${avatar}</div>
+                <div class="message-content">
+                    <p>${message}</p>
+                </div>
+            `;
+            
+            chatMessagesContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+        }
+
+        async function deleteBook(bookId) {
+            if (!confirm('Are you sure you want to delete this book? This will also clear the chat history.')) return;
+
+            try {
+                const response = await fetch(`/books/${bookId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert('Book deleted successfully! 🗑️', 'success');
+                    
+                    // If we're currently chatting with this book, go back to book management
+                    if (currentBookId === bookId) {
+                        showBooksManagement();
+                    }
+                    
+                    await loadBooks();
+                } else {
+                    showAlert(result.detail || 'Delete failed', 'error');
+                }
+            } catch (error) {
+                showAlert('Network error during delete', 'error');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            
+            document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
